@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Content Studio
 
-## Getting Started
+A personal content studio for drafting and managing Twitter/X tweets and threads.
+Built with **Next.js (App Router)**, **TypeScript**, **Tailwind CSS**, and **Supabase**.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Tabbed composer** — switch between **Tweets** and **Threads**.
+  - Tweets: a single textarea with a live 280-character counter.
+  - Threads: a dynamic, numbered, multi-card composer. Press **Enter three times
+    in a row** to start the next tweet. Each card has its own character counter.
+- **Drafts** are split into **Tweet Drafts** and **Thread Drafts**, newest first.
+  - **Copy** — copies to clipboard (threads use double line breaks between tweets).
+  - **Edit** — loads the draft back into the composer; the old copy is removed on save.
+  - **Delete** — removes the draft after a confirmation prompt.
+- Clean, minimal dark UI.
+- All database operations use the Supabase JS client directly from the browser.
+
+## Getting started
+
+1. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Create `.env.local` in the project root:
+
+   ```bash
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+   ```
+
+   (See `.env.local.example`.)
+
+3. Run the dev server:
+
+   ```bash
+   npm run dev
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000).
+
+## Supabase schema
+
+The app expects a `drafts` table:
+
+```sql
+create table drafts (
+  id uuid primary key default gen_random_uuid(),
+  type text not null check (type in ('tweet', 'thread')),
+  content text not null,
+  status text not null default 'draft' check (status in ('draft', 'ready', 'posted')),
+  created_at timestamptz not null default now()
+);
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Because the app talks to Supabase from the browser with the anon key, enable Row
+Level Security and add policies appropriate for your use (e.g. allow anon
+read/insert/delete for a personal, single-user setup).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Thread storage format
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+A thread is stored as a single `content` string with tweets joined by the
+separator `---TWEET---`. The UI splits on this separator when displaying,
+editing, and copying.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> Requires Node.js 18.18+ (Node 20+ recommended).
