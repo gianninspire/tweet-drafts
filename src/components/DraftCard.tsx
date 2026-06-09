@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Draft, THREAD_SEPARATOR } from "@/lib/supabase";
+import { Draft, resolveImageUrls, THREAD_SEPARATOR } from "@/lib/supabase";
 
 interface DraftCardProps {
   draft: Draft;
@@ -20,11 +20,35 @@ function formatDate(iso: string) {
   });
 }
 
+function Thumbnail({ url, alt }: { url: string; alt: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block w-fit"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={alt}
+        className="max-h-[80px] rounded-md border border-neutral-800 object-cover"
+      />
+    </a>
+  );
+}
+
 export default function DraftCard({ draft, onEdit, onDelete }: DraftCardProps) {
   const [copied, setCopied] = useState(false);
 
   const isThread = draft.type === "thread";
-  const tweets = isThread ? draft.content.split(THREAD_SEPARATOR) : [draft.content];
+  const tweets = isThread
+    ? draft.content.split(THREAD_SEPARATOR)
+    : [draft.content];
+
+  // Positional images (with legacy single-image fallback).
+  const images = resolveImageUrls(draft);
+  const tweetImages = images.filter((u): u is string => !!u);
 
   // Threads copy with a blank line between tweets; tweets copy verbatim.
   const copyText = isThread ? tweets.join("\n\n") : draft.content;
@@ -40,11 +64,7 @@ export default function DraftCard({ draft, onEdit, onDelete }: DraftCardProps) {
   };
 
   const handleDelete = () => {
-    if (
-      window.confirm(
-        "Delete this draft? This action cannot be undone."
-      )
-    ) {
+    if (window.confirm("Delete this draft? This action cannot be undone.")) {
       onDelete(draft.id);
     }
   };
@@ -52,7 +72,9 @@ export default function DraftCard({ draft, onEdit, onDelete }: DraftCardProps) {
   return (
     <article className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs text-neutral-500">{formatDate(draft.created_at)}</span>
+        <span className="text-xs text-neutral-500">
+          {formatDate(draft.created_at)}
+        </span>
         {isThread && (
           <span className="rounded-full border border-neutral-800 bg-neutral-900 px-2 py-0.5 text-xs text-neutral-400">
             {tweets.length} {tweets.length === 1 ? "tweet" : "tweets"}
@@ -61,36 +83,36 @@ export default function DraftCard({ draft, onEdit, onDelete }: DraftCardProps) {
       </div>
 
       {isThread ? (
-        <div>
-          <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-neutral-200">
-            {tweets[0]}
-          </p>
-          {tweets.length > 1 && (
-            <p className="mt-2 text-xs text-neutral-500">
-              + {tweets.length - 1} more {tweets.length - 1 === 1 ? "tweet" : "tweets"}
-            </p>
-          )}
+        <div className="space-y-3">
+          {tweets.map((t, i) => (
+            <div
+              key={i}
+              className={i > 0 ? "border-t border-neutral-800/70 pt-3" : ""}
+            >
+              <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-neutral-200">
+                {t}
+              </p>
+              {images[i] && (
+                <div className="mt-2">
+                  <Thumbnail url={images[i] as string} alt={`Tweet ${i + 1} image`} />
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       ) : (
-        <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-neutral-200">
-          {draft.content}
-        </p>
-      )}
-
-      {draft.image_url && (
-        <a
-          href={draft.image_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 block w-fit"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={draft.image_url}
-            alt="Draft attachment"
-            className="max-h-[120px] rounded-lg border border-neutral-800 object-cover"
-          />
-        </a>
+        <>
+          <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-neutral-200">
+            {draft.content}
+          </p>
+          {tweetImages.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {tweetImages.map((url, i) => (
+                <Thumbnail key={url} url={url} alt={`Attachment ${i + 1}`} />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <div className="mt-4 flex items-center gap-2">

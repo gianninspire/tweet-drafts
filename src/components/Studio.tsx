@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Draft, DraftType, supabase } from "@/lib/supabase";
+import { Draft, DraftType, ImageUrls, supabase } from "@/lib/supabase";
 import Composer from "./Composer";
 
 export default function Studio() {
@@ -42,12 +42,12 @@ export default function Studio() {
   }, [editId]);
 
   const handleSave = useCallback(
-    async (type: DraftType, content: string, imageUrl: string | null) => {
+    async (type: DraftType, content: string, imageUrls: ImageUrls | null) => {
       const editingId = editingDraft?.id;
 
       const { error } = await supabase
         .from("drafts")
-        .insert({ type, content, status: "draft", image_url: imageUrl });
+        .insert({ type, content, status: "draft", image_urls: imageUrls });
 
       if (error) {
         setError(error.message);
