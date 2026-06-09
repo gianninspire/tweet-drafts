@@ -1,19 +1,27 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { Draft, DraftType, THREAD_SEPARATOR } from "@/lib/supabase";
+  Draft,
+  DraftType,
+  DRAFT_IMAGES_BUCKET,
+  storagePathFromPublicUrl,
+  supabase,
+  THREAD_SEPARATOR,
+} from "@/lib/supabase";
 import CharCounter from "./CharCounter";
 
 interface ComposerProps {
   editingDraft: Draft | null;
-  onSave: (type: DraftType, content: string) => Promise<void>;
+  onSave: (
+    type: DraftType,
+    content: string,
+    imageUrl: string | null
+  ) => Promise<void>;
   onCancelEdit: () => void;
 }
+
+const ACCEPTED_IMAGE_TYPES = "image/jpeg,image/png,image/gif,image/webp";
 
 function emptyThread() {
   return [""];
@@ -29,6 +37,12 @@ export default function Composer({
   const [thread, setThread] = useState<string[]>(emptyThread());
   const [saving, setSaving] = useState(false);
 
+  // Image upload state.
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   // Tracks consecutive Enter presses per thread card index.
   const enterCounts = useRef<Record<number, number>>({});
   const cardRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
@@ -43,6 +57,8 @@ export default function Composer({
       setTab("thread");
       setThread(editingDraft.content.split(THREAD_SEPARATOR));
     }
+    setImageUrl(editingDraft.image_url ?? null);
+    setImageError(null);
     // Scroll composer into view so the user sees the loaded draft.
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [editingDraft]);
@@ -50,8 +66,59 @@ export default function Composer({
   const resetComposer = useCallback(() => {
     setTweet("");
     setThread(emptyThread());
+    setImageUrl(null);
+    setImageError(null);
     enterCounts.current = {};
   }, []);
+
+  const handleFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setImageError(null);
+    try {
+      const path = `${Date.now()}-${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from(DRAFT_IMAGES_BUCKET)
+        .upload(path, file, { cacheControl: "3600", upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from(DRAFT_IMAGES_BUCKET)
+        .getPublicUrl(path);
+
+      // Remove any previously-uploaded-but-unsaved image before replacing it.
+      if (imageUrl) {
+        const oldPath = storagePathFromPublicUrl(imageUrl);
+        if (oldPath) {
+          await supabase.storage.from(DRAFT_IMAGES_BUCKET).remove([oldPath]);
+        }
+      }
+
+      setImageUrl(data.publicUrl);
+    } catch (err) {
+      setImageError(
+        err instanceof Error ? err.message : "Image upload failed."
+      );
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    if (!imageUrl) return;
+    const path = storagePathFromPublicUrl(imageUrl);
+    setImageUrl(null);
+    setImageError(null);
+    if (path) {
+      await supabase.storage.from(DRAFT_IMAGES_BUCKET).remove([path]);
+    }
+  };
 
   const handleThreadKeyDown = (
     e: React.KeyboardEvent<HTMLTextAreaElement>,
@@ -107,10 +174,10 @@ export default function Composer({
     setSaving(true);
     try {
       if (tab === "tweet") {
-        await onSave("tweet", tweet.trim());
+        await onSave("tweet", tweet.trim(), imageUrl);
       } else {
         const cleaned = thread.map((t) => t.trim()).filter((t) => t.length > 0);
-        await onSave("thread", cleaned.join(THREAD_SEPARATOR));
+        await onSave("thread", cleaned.join(THREAD_SEPARATOR), imageUrl);
       }
       resetComposer();
     } finally {
@@ -125,7 +192,7 @@ export default function Composer({
   return (
     <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
       {/* Tabs */}
-      <div className="mb-4 flex items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-900/60 p-1 w-fit">
+      <div className="mb-4 flex w-fit items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-900/60 p-1">
         {(["tweet", "thread"] as DraftType[]).map((t) => (
           <button
             key={t}
@@ -232,10 +299,67 @@ export default function Composer({
         </div>
       )}
 
+      {/* Image upload — applies to both tweets and threads */}
+      <div className="mt-4">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPTED_IMAGE_TYPES}
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="inline-flex items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 disabled:opacity-50"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="9" cy="9" r="2" />
+            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+          </svg>
+          {uploading ? "Uploading…" : imageUrl ? "Replace image" : "Add image"}
+        </button>
+
+        {imageError && (
+          <p className="mt-2 text-xs text-red-400">{imageError}</p>
+        )}
+
+        {imageUrl && (
+          <div className="relative mt-3 inline-block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageUrl}
+              alt="Draft attachment preview"
+              className="max-h-[120px] rounded-lg border border-neutral-800 object-cover"
+            />
+            <button
+              type="button"
+              onClick={handleRemoveImage}
+              aria-label="Remove image"
+              className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-700 bg-neutral-900 text-neutral-300 shadow hover:bg-neutral-800"
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="mt-4 flex items-center justify-end gap-2">
         <button
           onClick={handleSave}
-          disabled={!canSave || saving}
+          disabled={!canSave || saving || uploading}
           className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {saving ? "Saving…" : "Save to Drafts"}

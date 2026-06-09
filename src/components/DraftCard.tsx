@@ -77,6 +77,22 @@ export default function DraftCard({ draft, onEdit, onDelete }: DraftCardProps) {
         </p>
       )}
 
+      {draft.image_url && (
+        <a
+          href={draft.image_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 block w-fit"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={draft.image_url}
+            alt="Draft attachment"
+            className="max-h-[120px] rounded-lg border border-neutral-800 object-cover"
+          />
+        </a>
+      )}
+
       <div className="mt-4 flex items-center gap-2">
         <button
           onClick={handleCopy}
